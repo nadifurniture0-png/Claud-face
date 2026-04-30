@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Rooms ────────────────────────────────────────────────────────────────
+    match /rooms/{roomId} {
+      // Anyone authenticated can read rooms
+      allow read: if request.auth != null;
+
+      // Only the host (creator) can create or update their own room
+      allow create: if request.auth != null
+        && request.resource.data.hostId == request.auth.uid;
+
+      allow update: if request.auth != null
+        && (
+          // Host can update anything
+          resource.data.hostId == request.auth.uid
+          ||
+          // Anyone can bump viewerCount only (±1 delta guard)
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewerCount'])
+           && math.abs(request.resource.data.viewerCount - resource.data.viewerCount) <= 1)
+        );
+
+      allow delete: if false; // Soft-delete via isLive flag
+
+      // ── Chat messages ────────────────────────────────────────────────────
+      match /messages/{msgId} {
+        allow read:   if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.text.size() <= 250;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
